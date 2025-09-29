@@ -8,7 +8,7 @@
 
 ## 实验性功能
 
-## 1.SplashCursor (VUEBITS动画库的流体溅射光标) - 新增可配置项
+### 1.SplashCursor (VUEBITS动画库的流体溅射光标) - 新增可配置项
 
 组件文件：`src/SplashCursor/SplashCursor.vue`
 
