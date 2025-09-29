@@ -1,8 +1,15 @@
-# 项目说明
+# 个人网站说明
 
-这是本项目的根 README。其中包含对 SplashCursor 组件新增 props 的用法说明与建议配置，方便团队查阅。
+> 这是本项目的根 README。其中包含对 SplashCursor 组件新增 props 的用法说明与建议配置。本项目为个人网站，新开发、新发现的好玩的组件可能会在该项目中使用，长期维护域名为[Tonks的个人网站](https://tonks.top)。
 
-## SplashCursor (流体溅射光标) - 新增可配置项
+## 基于sleepy的电脑状态时间网站
+
+后端部署在阿里云服务器上。一个简单的监控电脑的网站项目，可以集成到监视手机应用状态，只不过苹果手机实现起来比较麻烦。此项目为纯前端项目，感兴趣的可以移步sleepy项目。
+
+## 实验性功能
+
+## 1.SplashCursor (VUEBITS动画库的流体溅射光标) - 新增可配置项
+
 组件文件：`src/SplashCursor/SplashCursor.vue`
 
 新增（向后兼容）props：
@@ -25,19 +32,3 @@
   - 例子：`<SplashCursor :DISABLE_CLICK_SPLAT="true" />` 会禁止点击产生的遮挡动画。
 
 - 向后兼容性：若不传这些 props，组件保持原始行为（完全随机颜色、任何移动都会 splat）。
-
-### 快速示例（在 `IndexPage.vue` 中）
-```vue
-<SplashCursor
-  :HUE_MIN="0.62"
-  :HUE_MAX="0.78"
-  :COLOR_INTENSITY="0.22"
-  :MIN_SPLAT_SPEED="0.008"
-/>
-```
-
-### 调试建议
-- 在本机和移动设备上分别调试 `MIN_SPLAT_SPEED`，并在高 DPI 屏上适当增大阈值。
-- 若希望静态配色（固定颜色或固定调色板），后续可以继续扩展组件以支持 `COLOR_MODE` / `COLOR_PALETTE` 等配置。
-
-如需我把 README 内容放在项目的其他位置或以中文/英文两种语言同步，请告诉我。
