@@ -2,8 +2,8 @@
     <!-- 示例：蓝紫色区间 + 较低阈值，仅作快速体验，生产可按需调整 -->
     <SplashCursor
       v-if="experimental && !isMobile()"
-      :SIM_RESOLUTION="128"
-      :DYE_RESOLUTION="1440"
+      :SIM_RESOLUTION="228"
+      :DYE_RESOLUTION="140"
       :CAPTURE_RESOLUTION="512"
       :DENSITY_DISSIPATION="4.5"
       :VELOCITY_DISSIPATION="2"
@@ -23,7 +23,6 @@
       :DISABLE_CLICK_SPLAT="true"
     />
     <div
-    ref="vantaRef"
     class="relative min-h-screen flex items-center justify-center transition-all duration-500"
   >
   <StaggeredMenu
@@ -45,10 +44,10 @@
      @menu-close="handleMenuClose"
      @item-click="handleMenuItemClick"
    />
-    <!-- 电脑端背景切换：一三五日用waves，其余用CSS光圈 -->
+    <!-- 电脑端背景：CSS 渐变 + OrbBg 同时展示 -->
     <template v-if="!isMobile()">
-      <div v-if="showWavesBg" ref="wavesBgRef" class="absolute inset-0 z-0"></div>
-      <HaloBg v-else class="absolute inset-0 z-0" />
+      <div class="absolute inset-0 z-0 halo-bg" />
+      <OrbBg class="absolute inset-0 z-0" />
     </template>
     <!-- 移动端图片背景 -->
     <div v-else class="absolute inset-0 z-0 mobile-bg" style="background-image: url('/assets/ph-bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; min-height: 100vh;"></div>
@@ -162,37 +161,48 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch, defineComponent, h } from 'vue'
+// ------------------------- Imports -------------------------
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import gsap from 'gsap'
 import { Refresh } from '@element-plus/icons-vue'
-import * as THREE from 'three'
-import WAVES from 'vanta/dist/vanta.waves.min'
+// Vanta / THREE not needed after switching to OrbBg
 import SplashCursor from '../SplashCursor/SplashCursor.vue'
 import StaggeredMenu from '@/StaggeredMenu/StaggeredMenu.vue'
 import NotesBoard from '@/components/Index/NotesBoard.vue'
 import useAxios from '@/composables/useAxios'
+import OrbBg from '@/components/animation/OrbBg.vue'
 import { ElMessage } from 'element-plus'
+
+// ------------------------- 3rd-party / instance init -------------------------
 const axios = useAxios()
-const vantaRef = ref(null)
-const wavesBgRef = ref(null)
-let vantaEffect = null
+
+// ------------------------- Refs and simple reactive state -------------------------
+// removed Vanta refs after switching to OrbBg
 const timeNow = ref(new Date())
 const updateTime = () => { timeNow.value = new Date() }
 setInterval(updateTime, 1000)
+
 // 检测是否空闲
 const lastAppName = ref('');
 const lastChangeTime = ref(Date.now());
 const idleDesc = ref(false);
 
-// 菜单项
+// 菜单项/UI 控件引用
 const experimental = ref(true); // 是否开启实验性功能
 const staggeredMenuRef = ref(null); // StaggeredMenu 组件的引用
-const menuItems = [
- { label: '我的状态', ariaLabel: 'Go to home page', link: 'mystatus' },
- { label: '我的待办', ariaLabel: 'Learn about us', link: 'mytasks' },
- { label: '联系', ariaLabel: 'Get in touch', link: 'contact' }
-]
+// 根据是否移动端决定是否显示外部 Calculator 链接（移动端不显示）
+const menuItems = (() => {
+  const base = [
+    { label: '我的状态', ariaLabel: 'my status', link: 'mystatus' },
+    { label: '我的待办', ariaLabel: 'my tasks', link: 'mytasks' }
+  ]
+  if (!isMobile()) {
+    base.push({ label: '我的博客', ariaLabel: 'my blog', link: 'https://blog.tonks.top/' })
+  }
+  base.push({ label: '联系', ariaLabel: 'contact', link: 'contact' })
+  return base
+})()
 
 const socialItems = [// 之后再改
  { label: 'Twitter', link: 'https://twitter.com' },
@@ -200,207 +210,19 @@ const socialItems = [// 之后再改
  { label: 'LinkedIn', link: 'https://linkedin.com' }
 ]
 
-const handleMenuOpen = () => console.log('Menu opened')
-const handleMenuClose = () => console.log('Menu closed')
-
 // 当前显示的视图类型
 const currentView = ref('mystatus') // 'mystatus' 或 'mytasks'
-
-// 处理菜单项点击，组件会把 item.link 传回
-const router = useRouter()
-const handleMenuItemClick = (payload) => {
-  // payload: { link, item, index }
-  const link = payload && payload.link ? payload.link : ''
-  if (!link) return
-
-  // 自动关闭菜单
-  if (staggeredMenuRef.value && staggeredMenuRef.value.closeMenu) {
-    staggeredMenuRef.value.closeMenu();
-  }
-
-  // 简单规则：以 '/' 开头使用路由跳转；否则根据link类型切换视图
-  if (link.startsWith('/')) {
-    router.push(link).catch(() => {})
-    return
-  } else if (link === 'mystatus' || link === 'mytasks') {
-    currentView.value = link
-    // 切换到笔记视图时刷新数据
-    if (link === 'mytasks') {
-      fetchNotes()
-    }
-    console.log('视图切换到:', link)
-  } else {
-    ElMessage.info('暂时还没有实现喔')
-    console.log('menu item clicked, link:', link)
-  }
-
-}
 
 // 本地存储key
 const STORAGE_KEY = 'app_status_persist';
 
 // showSchedule 开关，默认 false（关闭），不从 localStorage 恢复
-// （用户要求：开始时默认 false，不从缓存读取）
 const showSchedule = ref(false)
 
-// 初始化时尝试从localStorage恢复
-try {
-  const persist = JSON.parse(localStorage.getItem(STORAGE_KEY));
-  if (persist && persist.lastAppName && persist.lastChangeTime) {
-    lastAppName.value = persist.lastAppName;
-    lastChangeTime.value = persist.lastChangeTime;
-  }
-} catch(_e) {
-  console.error('Failed to parse localStorage data', _e);
-}
-// 移动端
-function isMobile() {
-  return /Android|webOS|iPhone|iPod|iPad|BlackBerry|Mobile/i.test(navigator.userAgent)
-}
-// 动画类型映射
-const vantaMap = {
-  waves: WAVES
-}
-const HaloBg = defineComponent({
-  name: 'HaloBg',
-  setup() {
-    return () => h('div', { class: 'halo-bg' })
-  }
-})
-// 根据时间段返回动画key
-function getWavesParamsByHour(hour) {
-  // 早晨：清新蓝色，波高适中，慢速
-  if (hour >= 6 && hour < 12) {
-    return {
-      color: 0x6fa8dc,
-      shininess: 20,
-      waveHeight: 8,
-      waveSpeed: 0.07,
-      zoom: 0.85,
-      backgroundColor: 0xf5f7fa
-    }
-  }
-  // 下午：明亮紫色，波高较低，速度适中
-  if (hour >= 12 && hour < 18) {
-    return {
-      color: 0xb4aee8,
-      shininess: 10,
-      waveHeight: 5,
-      waveSpeed: 0.09,
-      zoom: 0.8,
-      backgroundColor: 0xf7f5fa
-    }
-  }
-  // 傍晚+晚上：深蓝色，波高略高，慢速
-  if (hour >= 18 && hour < 23) {
-    return {
-      color: 0x222233,
-      shininess: 8,
-      waveHeight: 10,
-      waveSpeed: 0.05,
-      zoom: 0.8,
-      backgroundColor: 0x181a2a
-    }
-  }
-  // 夜深：更深色，波高低，极慢
-  return {
-    color: 0x181a2a,
-    shininess: 5,
-    waveHeight: 4,
-    waveSpeed: 0.03,
-    zoom: 0.75,
-    backgroundColor: 0x10111a
-  }
-}
+// card ref
+const cardRef = ref(null)
 
-// 当前动画类型
-const wavesParams = ref(getWavesParamsByHour(new Date().getHours()))
-// 判断是否显示waves动画（暂时取消）
-const showWavesBg = computed(() => {
-  const d = new Date().getDay()
-  return d === 8
-})
-
-// 切换动画
-async function setVantaEffect() {
-  await nextTick()
-  if (vantaEffect) {
-    vantaEffect.destroy()
-    vantaEffect = null
-  }
-  if (wavesBgRef.value && showWavesBg.value) {
-    vantaEffect = vantaMap['waves']({
-      el: wavesBgRef.value,
-      THREE,
-      mouseControls: true,
-      touchControls: false,
-      minHeight: 200.00,
-      minWidth: 200.00,
-      scale: 0.5,
-      scaleMobile: 0.5,
-      ...wavesParams.value
-    })
-  }
-}
-// 只在小时或星期真正变化时重建waves动画，避免重复加载
-let lastHour = timeNow.value.getHours()
-let lastDay = timeNow.value.getDay()
-watch(
-  () => [timeNow.value.getHours(), timeNow.value.getDay()],
-  ([hour, day]) => {
-    if (hour !== lastHour || day !== lastDay) {
-      lastHour = hour
-      lastDay = day
-      const newParams = getWavesParamsByHour(hour)
-      wavesParams.value = newParams
-      setVantaEffect()
-    }
-  }
-)
-
-onMounted(async () => {
-  if (!isMobile() && showWavesBg.value) {
-    await setVantaEffect()
-  }
-  
-  // 检查URL参数来决定初始视图
-  const route = useRoute()
-  if (route.query.view === 'mytasks') {
-    currentView.value = 'mytasks'
-  }
-  
-  // 首次挂载时按正常逻辑读取（允许缓存），随后启动定时轮询
-  try {
-    await fetchAppStatus()
-  } catch {
-    console.error('首次获取状态失败')
-  }
-  try {
-    await fetchNotes()
-  } catch {
-    console.error('首次获取笔记失败')
-  }
-  // 后续每5秒轮询状态（正常请求），保存 interval id 以便卸载时清除
-  // eslint-disable-next-line no-undef
-  window.__statusIntervalId = setInterval(() => fetchAppStatus(), 5000)
-  await nextTick()
-})
-onBeforeUnmount(() => {
-  if (vantaEffect) {
-    vantaEffect.destroy()
-    vantaEffect = null
-  }
-  // 清除轮询定时器
-  try {
-    if (window.__statusIntervalId) {
-      clearInterval(window.__statusIntervalId)
-      window.__statusIntervalId = null
-    }
-  } catch {
-    // ignore
-  }
-})
-
+// ------------------------- Static maps / constants -------------------------
 const appDescMap = {
   "Electron应用开发": "在开发exe应用中...很可能是综设任务！",
   "操作菜单": "在查看电脑菜单",
@@ -461,17 +283,6 @@ const classDescMap = {
 // 学期开始日期（可根据实际调整）
 const termStart = new Date(2025, 8, 2) // 2025年9月2日，注意月份0起，9月是8
 
-// 计算当前是第几周
-function getWeekNumber(date = new Date()) {
-  // 获取本周周一
-  const day = date.getDay() || 7
-  const monday = new Date(date)
-  monday.setDate(date.getDate() - day + 1)
-  // 距离开学周一的天数
-  const diff = monday - termStart
-  return diff >= 0 ? Math.floor(diff / (7 * 24 * 3600 * 1000)) + 1 : 1
-}
-
 // 新课表结构，带周次范围
 const classTable = [
   // 周一
@@ -508,6 +319,21 @@ const classTable = [
   },
 ]
 
+// 节次时间段
+const classTimeList = [
+  { start: "08:30", end: "10:05" }, // 1
+  { start: "10:20", end: "11:55" }, // 2
+  { start: "14:30", end: "16:05" }, // 3
+  { start: "16:20", end: "17:55" }, // 4
+  { start: "19:30", end: "21:55" }  // 5
+]
+
+// ------------------------- Helper / pure functions -------------------------
+// 移动端检测
+function isMobile() {
+  return /Android|webOS|iPhone|iPod|iPad|BlackBerry|Mobile/i.test(navigator.userAgent)
+}
+
 // 解析课程字符串，返回 {name, startWeek, endWeek}
 function parseClass(str) {
   if (!str) return null
@@ -520,14 +346,16 @@ function parseClass(str) {
   }
 }
 
-// 节次时间段
-const classTimeList = [
-  { start: "08:30", end: "10:05" }, // 1
-  { start: "10:20", end: "11:55" }, // 2
-  { start: "14:30", end: "16:05" }, // 3
-  { start: "16:20", end: "17:55" }, // 4
-  { start: "19:30", end: "21:55" }  // 5
-]
+// 计算当前是第几周
+function getWeekNumber(date = new Date()) {
+  // 获取本周周一
+  const day = date.getDay() || 7
+  const monday = new Date(date)
+  monday.setDate(date.getDate() - day + 1)
+  // 距离开学周一的天数
+  const diff = monday - termStart
+  return diff >= 0 ? Math.floor(diff / (7 * 24 * 3600 * 1000)) + 1 : 1
+}
 
 // 工具函数：判断当前节次
 function getCurrentClassIndex(now) {
@@ -559,11 +387,14 @@ function getCurrentClass(now) {
     week
   }
 }
+
+// ------------------------- Computed / derived state -------------------------
 const classStatusObj = computed(() => {
   const c = getCurrentClass(timeNow.value)
   if (c) return c
   return null
 })
+
 const appName = ref('')
 const appDesc = ref('')
 const error = ref(false)
@@ -573,6 +404,61 @@ const refreshing = ref(false)
 const notes = ref([])
 const notesLoading = ref(false)
 
+// 课表提示
+const classStatus = computed(() => {
+  const c = getCurrentClass(timeNow.value)
+  if (c) {
+    return `${c.name}：${c.desc}`
+  }
+  return ''
+})
+
+const classStatusDisplay = computed(() => {
+  if (classStatus.value) return `当前课程：${classStatus.value}`
+  // 非上课时间段
+  const h = timeNow.value.getHours()
+  if (h >= 12 && h < 14) return '午休时间'
+  if (h >= 18 && h < 19) return '晚餐时间'
+  if (h >= 22 || h < 6) return '休息时间'
+  return ''
+})
+
+// 构造今天的课表供小注释显示
+const todaySchedule = computed(() => {
+  const now = new Date()
+  const day = now.getDay()
+  // 周末显示空
+  if (day === 0 || day > 5) return []
+  const table = classTable[day - 1] || {}
+  const week = getWeekNumber(now)
+  const result = []
+  for (let i = 0; i < classTimeList.length; i++) {
+    const slot = classTimeList[i]
+    const raw = table[i + 1]
+    if (!raw) continue
+    const parsed = parseClass(raw)
+    if (!parsed) continue
+    if (week < parsed.startWeek || week > parsed.endWeek) continue
+    // 只添加今天实际有课的时段
+    result.push({ time: `${slot.start} - ${slot.end}`, course: parsed.name })
+  }
+  return result
+})
+
+// 课表时间段提示
+const timeTip = computed(() => {
+  const h = timeNow.value.getHours()
+  if (h >= 0 && h < 6) return '夜深了，注意休息'
+  if (h >= 6 && h < 8) return '如果不在就是还没起床XD'
+  if (h >= 8 && h < 12) return '学习时间'
+  if (h >= 12 && h < 14) return '最好在写作业'
+  if (h >= 14 && h < 18) return 'Zzz'
+  if (h >= 18 && h < 19) return '傍晚放风中...'
+  if (h >= 19 && h < 23) return '有可能在写作业'
+  return '早点休息'
+})
+
+// ------------------------- API / methods -------------------------
 // 获取笔记列表（使用正常请求，允许缓存）
 const fetchNotes = async () => {
   notesLoading.value = true
@@ -645,9 +531,88 @@ const handleRefresh = async () => {
   }
 }
 
+// 菜单 handlers / router
+const router = useRouter()
+const handleMenuOpen = () => console.log('Menu opened')
+const handleMenuClose = () => console.log('Menu closed')
+const handleMenuItemClick = (payload) => {
+  // payload: { link, item, index }
+  const link = payload && payload.link ? payload.link : ''
+  if (!link) return
 
-const cardRef = ref(null)
+  // 自动关闭菜单
+  if (staggeredMenuRef.value && staggeredMenuRef.value.closeMenu) {
+    staggeredMenuRef.value.closeMenu();
+  }
 
+  // 外部链接：以 http(s):// 开头 或 以 '//' 开头，直接在新标签打开
+  if (/^https?:\/\//i.test(link) || link.startsWith('//')) {
+    window.open(link, '_blank', 'noopener');
+    return
+  }
+
+  // 兼容误传 '/https://...' 这种情况：去掉前导斜杠后按外链处理
+  if (link.startsWith('/https://') || link.startsWith('/http://')) {
+    const fixed = link.replace(/^\//, '')
+    window.open(fixed, '_blank', 'noopener');
+    return
+  }
+
+  // 简单规则：以 '/' 开头使用路由跳转；否则根据link类型切换视图
+  if (link.startsWith('/')) {
+    router.push(link).catch(() => {})
+    return
+  } else if (link === 'mystatus' || link === 'mytasks') {
+    currentView.value = link
+    // 切换到笔记视图时刷新数据
+    if (link === 'mytasks') {
+      fetchNotes()
+    }
+    console.log('视图切换到:', link)
+  } else {
+    ElMessage.info('暂时还没有实现喔')
+    console.log('menu item clicked, link:', link)
+  }
+
+}
+
+// ------------------------- Lifecycle -------------------------
+onMounted(async () => {
+  // 检查URL参数来决定初始视图
+  const route = useRoute()
+  if (route.query.view === 'mytasks') {
+    currentView.value = 'mytasks'
+  }
+  
+  // 首次挂载时按正常逻辑读取（允许缓存），随后启动定时轮询
+  try {
+    await fetchAppStatus()
+  } catch {
+    console.error('首次获取状态失败')
+  }
+  try {
+    await fetchNotes()
+  } catch {
+    console.error('首次获取笔记失败')
+  }
+  // 后续每5秒轮询状态（正常请求），保存 interval id 以便卸载时清除
+  // eslint-disable-next-line no-undef
+  window.__statusIntervalId = setInterval(() => fetchAppStatus(), 5000)
+  await nextTick()
+})
+onBeforeUnmount(() => {
+  // 清除轮询定时器
+  try {
+    if (window.__statusIntervalId) {
+      clearInterval(window.__statusIntervalId)
+      window.__statusIntervalId = null
+    }
+  } catch {
+    // ignore
+  }
+})
+
+// ------------------------- Display computed helpers -------------------------
 const appNameDisplay = computed(() => appName.value || '没有打开应用')
 const appDescDisplay = computed(() => {
   const h = timeNow.value.getHours()
@@ -683,107 +648,9 @@ const appDescDisplay = computed(() => {
   return appDesc.value
 })
 
-// const weekMap = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六']
-// const timeDisplay = computed(() => {
-//   const t = timeNow.value
-//   const h = t.getHours().toString().padStart(2, '0')
-//   const m = t.getMinutes().toString().padStart(2, '0')
-//   const s = t.getSeconds().toString().padStart(2, '0')
-//   return `${weekMap[t.getDay()]} ${h}:${m}:${s}`
-// })
-
-// 课表提示
-const classStatus = computed(() => {
-  const c = getCurrentClass(timeNow.value)
-  if (c) {
-    return `${c.name}：${c.desc}`
-  }
-  return ''
-})
-
-const classStatusDisplay = computed(() => {
-  if (classStatus.value) return `当前课程：${classStatus.value}`
-  // 非上课时间段
-  const h = timeNow.value.getHours()
-  if (h >= 12 && h < 14) return '午休时间'
-  if (h >= 18 && h < 19) return '晚餐时间'
-  if (h >= 22 || h < 6) return '休息时间'
-  return ''
-})
-
-// 构造今天的课表供小注释显示
-const todaySchedule = computed(() => {
-  const now = new Date()
-  const day = now.getDay()
-  // 周末显示空
-  if (day === 0 || day > 5) return []
-  const table = classTable[day - 1] || {}
-  const week = getWeekNumber(now)
-  const result = []
-  for (let i = 0; i < classTimeList.length; i++) {
-    const slot = classTimeList[i]
-    const raw = table[i + 1]
-    if (!raw) continue
-    const parsed = parseClass(raw)
-    if (!parsed) continue
-    if (week < parsed.startWeek || week > parsed.endWeek) continue
-    // 只添加今天实际有课的时段
-    result.push({ time: `${slot.start} - ${slot.end}`, course: parsed.name })
-  }
-  return result
-})
-
-// 课表时间段提示
-const timeTip = computed(() => {
-  const h = timeNow.value.getHours()
-  if (h >= 0 && h < 6) return '夜深了，注意休息'
-  if (h >= 6 && h < 8) return '如果不在就是还没起床XD'
-  if (h >= 8 && h < 12) return '学习时间'
-  if (h >= 12 && h < 14) return '最好在写作业'
-  if (h >= 14 && h < 18) return 'Zzz'
-  if (h >= 18 && h < 19) return '傍晚放风中...'
-  if (h >= 19 && h < 23) return '有可能在写作业'
-  return '早点休息'
-})
-
-
-
 </script>
 
 <style>
-/* CSS波浪动画 */
-.wave-bg {
-  width: 100vw;
-  height: 100vh;
-  position: absolute;
-  left: 0; top: 0;
-  overflow: hidden;
-  z-index: 0;
-}
-.wave {
-  position: absolute;
-  left: 0; bottom: 0;
-  width: 200vw;
-  height: 180px;
-  background: linear-gradient(90deg,#6fa8dc 60%,#b4aee8 100%);
-  opacity: 0.7;
-  border-radius: 43% 57% 60% 40%/60% 40% 60% 40%;
-  animation: wave-move 8s linear infinite;
-}
-.wave1 {
-  animation-delay: 0s;
-  opacity: 0.7;
-}
-.wave2 {
-  animation-delay: 4s;
-  opacity: 0.4;
-  background: linear-gradient(90deg,#b4aee8 60%,#6fa8dc 100%);
-}
-@keyframes wave-move {
-  0% { transform: translateX(0) scaleY(1); }
-  50% { transform: translateX(-50vw) scaleY(1.1); }
-  100% { transform: translateX(0) scaleY(1); }
-}
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.5s;
 }
@@ -817,18 +684,19 @@ const timeTip = computed(() => {
   cursor: pointer !important;
 }
 
- .halo-bg {
+/* 桌面端背景：光圈渐变层，与 OrbBg 叠加 */
+.halo-bg {
   width: 100vw;
   height: 100vh;
   position: absolute;
   left: 0; top: 0;
-  background: radial-gradient(circle at 0% 0%, #fff7 0%, #b4aee8 40%, #6fa8dc 70%, #222233 100%);
+  background: radial-gradient(circle at 0% 0%, #fff7 0%, #b4aee8 40%, #6fa8dc 70%, #95fbf48e 100%);
   animation: halo-pulse 4s ease-in-out infinite alternate;
   z-index: 0;
 }
 @keyframes halo-pulse {
   0% { filter: blur(0px) brightness(1); }
-  100% { filter: blur(8px) brightness(1.1); }
+  100% { filter: blur(8px) brightness(1.08); }
 }
 /* 卡片过渡：状态卡从下往上进入（card-up），笔记卡从上往下进入（card-down） */
 

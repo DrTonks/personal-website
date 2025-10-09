@@ -24,6 +24,7 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.0",
     "lucide-vue-next": "^0.544.0",
+    "ogl": "^1.0.11",
     "radix-vue": "^1.9.17",
     "shadcn-vue": "^2.2.0",
     "tailwind-merge": "^3.3.1",
