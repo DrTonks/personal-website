@@ -17,7 +17,7 @@
       :BACK_COLOR="{ r: 0.5, g: 0, b: 0 }"
       :TRANSPARENT="true"
       :HUE_MIN="0.45"
-      :HUE_MAX="1"
+      :HUE_MAX="0.8"
       :COLOR_INTENSITY="0.22"
       :MIN_SPLAT_SPEED="0.01"
       :DISABLE_CLICK_SPLAT="true"
@@ -47,7 +47,7 @@
     <!-- 电脑端背景：CSS 渐变 + OrbBg 同时展示 -->
     <template v-if="!isMobile()">
       <div class="absolute inset-0 z-0 halo-bg" />
-      <OrbBg class="absolute inset-0 z-0" />
+  <OrbBg class="absolute inset-0 z-0" :hue="50" />
     </template>
     <!-- 移动端图片背景 -->
     <div v-else class="absolute inset-0 z-0 mobile-bg" style="background-image: url('/assets/ph-bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; min-height: 100vh;"></div>
@@ -198,9 +198,10 @@ const menuItems = (() => {
     { label: '我的待办', ariaLabel: 'my tasks', link: 'mytasks' }
   ]
   if (!isMobile()) {
-    base.push({ label: '我的博客', ariaLabel: 'my blog', link: 'https://blog.tonks.top/' })
+    base.push({ label: '我的项目', ariaLabel: 'my projects', link: 'https://github.com/DrTonks' })
   }
-  base.push({ label: '联系', ariaLabel: 'contact', link: 'contact' })
+  base.push({ label: '我的博客', ariaLabel: 'my blog', link: 'https://blog.tonks.top' })
+
   return base
 })()
 
@@ -281,7 +282,22 @@ const classDescMap = {
 }
 
 // 学期开始日期（可根据实际调整）
-const termStart = new Date(2025, 8, 2) // 2025年9月2日，注意月份0起，9月是8
+// 把指定的学期起始日期校正为该日期所在周的周一（并把时间设为 00:00:00），
+// 这样 getWeekNumber 会以“学期第1周的周一”为基准进行计算。
+function makeMonday(date) {
+  const d = new Date(date)
+  // 将小时分秒归零，方便按天计算
+  d.setHours(0, 0, 0, 0)
+  // getDay(): 0 (Sun) - 6 (Sat). 我们希望将周日视为 7
+  const day = d.getDay() || 7
+  // 计算本周周一
+  d.setDate(d.getDate() - day + 1)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+// 原始学期日期（按需求调整到真实的某一天），然后校正为那周的周一
+const termStart = makeMonday(new Date(2025, 8, 2)) // 2025年9月2日 -> 校正到该周的周一（2025-09-01）
 
 // 新课表结构，带周次范围
 const classTable = [
@@ -690,7 +706,7 @@ const appDescDisplay = computed(() => {
   height: 100vh;
   position: absolute;
   left: 0; top: 0;
-  background: radial-gradient(circle at 0% 0%, #fff7 0%, #b4aee8 40%, #6fa8dc 70%, #95fbf48e 100%);
+  background: radial-gradient(circle at 0% 0%, #fff7 0%, #6fa8dc 40%, #aee5e8 70%, #95fbf48e 100%);
   animation: halo-pulse 4s ease-in-out infinite alternate;
   z-index: 0;
 }
